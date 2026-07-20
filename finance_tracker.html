@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Monthly Finance Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#f4f9f6; --panel:#ffffff; --panel2:#f0f7f3; --border:#dbe7e0;
+    --text:#16211b; --muted:#6b7c73; --accent:#1e8e4f; --good:#1e8e4f; --bad:#d64545;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px;}
+  .row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;align-items:center;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(20,60,40,0.06);}
+  .card h2{font-size:15px;margin:0 0 12px;color:var(--text);}
+  select, input[type=text], input[type=number], input[type=month]{
+    background:var(--panel2);border:1px solid var(--border);color:var(--text);
+    padding:8px 10px;border-radius:6px;font-size:13px;
+  }
+  button{
+    background:var(--accent);color:#fff;border:none;border-radius:6px;
+    padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;
+  }
+  button.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text);}
+  button.danger{background:transparent;color:var(--bad);padding:4px 8px;font-weight:400;}
+  button:hover{opacity:.9;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(20,60,40,0.06);}
+  .stat .label{color:var(--muted);font-size:12px;margin-bottom:6px;}
+  .stat .value{font-size:24px;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border);}
+  td{padding:6px 10px;border-bottom:1px solid var(--border);}
+  tr:hover td{background:var(--panel2);}
+  td input[type=text], td input[type=number]{width:100%;background:transparent;border:none;color:var(--text);font-size:13px;padding:4px;}
+  td input[type=text]:focus, td input[type=number]:focus{background:var(--panel2);border-radius:4px;}
+  .drop{border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;color:var(--muted);cursor:pointer;}
+  .drop.drag{border-color:var(--accent);color:var(--text);}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted);}
+  .flex-between{display:flex;justify-content:space-between;align-items:center;}
+  .empty{color:var(--muted);font-size:13px;padding:16px 0;text-align:center;}
+  .amt-neg{color:var(--bad);}
+  .amt-pos{color:var(--good);}
+  .small{font-size:12px;color:var(--muted);}
+  #status{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px;}
+  .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);}
+  .tab-btn{background:transparent;border:none;color:var(--muted);font-weight:600;font-size:14px;padding:10px 16px;cursor:pointer;border-bottom:2px solid transparent;border-radius:0;}
+  .tab-btn:hover{color:var(--text);opacity:1;}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .bar-track{background:var(--panel2);border-radius:4px;height:10px;overflow:hidden;position:relative;}
+  .bar-fill{height:100%;border-radius:4px;}
+  .bar-fill.pos{background:var(--good);}
+  .bar-fill.neg{background:var(--bad);}
+  .import-group{border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;}
+  .import-group summary{cursor:pointer;list-style:none;padding:10px 14px;background:var(--panel2);display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;}
+  .import-group summary::-webkit-details-marker{display:none;}
+  .import-group summary::before{content:'▸';display:inline-block;margin-right:8px;transition:transform .1s;color:var(--muted);}
+  .import-group[open] summary::before{transform:rotate(90deg);}
+  .import-group summary .meta{font-weight:400;color:var(--muted);font-size:12px;}
+  .import-group table{margin:0;}
+  .import-group td, .import-group th{padding:6px 14px;}
+  .manual-rows table{margin:0;}
+  .chart{display:flex;align-items:flex-end;gap:14px;height:220px;padding:10px 4px 0;}
+  .chart-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+  .chart-bar-wrap{position:relative;width:100%;max-width:44px;height:100%;display:flex;align-items:flex-end;}
+  .chart-bar-income{width:100%;background:var(--good);border-radius:4px 4px 0 0;position:relative;min-height:1px;}
+  .chart-bar-expense{position:absolute;bottom:0;left:0;width:100%;background:var(--bad);opacity:.75;border-radius:4px 4px 0 0;min-height:1px;}
+  .chart-label{margin-top:8px;font-size:11px;color:var(--muted);text-align:center;}
+  .chart-amt{font-size:10px;color:var(--muted);margin-top:2px;}
+  .donut-row{display:flex;gap:28px;align-items:center;flex-wrap:wrap;}
+  .donut{width:180px;height:180px;border-radius:50%;flex-shrink:0;position:relative;}
+  .donut::after{content:'';position:absolute;inset:22px;background:var(--panel);border-radius:50%;}
+  .donut-center{position:absolute;inset:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:1;}
+  .donut-center .amt{font-size:16px;font-weight:700;}
+  .donut-center .lbl{font-size:10px;color:var(--muted);}
+  .legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:200px;}
+  .legend-row{display:flex;align-items:center;gap:8px;font-size:13px;}
+  .legend-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+  .legend-name{flex:1;}
+  .legend-pct{color:var(--muted);width:48px;text-align:right;}
+  .tx-toggle-btn{background:transparent;border:1px solid var(--border);color:var(--accent);font-weight:600;font-size:11px;padding:2px 6px;border-radius:5px;cursor:pointer;flex-shrink:0;line-height:1.4;}
+  .tx-toggle-btn:hover{background:var(--panel2);opacity:1;}
+  .tx-toggle-btn.open{transform:none;background:var(--panel2);}
+  .tx-panel{margin:2px 10px 10px;padding:8px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;max-width:460px;}
+  .tx-panel table{font-size:12px;}
+  .tx-panel th, .tx-panel td{padding:4px 6px;}
+  .tx-panel button.secondary{padding:5px 10px;font-size:12px;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="flex-between" style="margin-bottom:4px;">
+    <h1>Monthly Finance Tracker</h1>
+    <div class="row" style="margin:0;">
+      <button class="secondary" id="backupBtn" title="Save all data to a JSON file on your computer">Backup Data (JSON)</button>
+      <button class="secondary" id="restoreBtn" title="Load data from a previously saved backup file">Restore from Backup</button>
+      <input type="file" id="restoreFileInput" accept="application/json" style="display:none;">
+    </div>
+  </div>
+  <div class="sub">Upload a statement PDF, review/edit expenses, track fixed costs, and see what you saved each month. Data lives in this browser's storage, so use "Backup Data" regularly — clearing your browser cache/site data will erase it unless you have a backup file saved.</div>
+  <div id="backupStatus" class="small" style="margin:-16px 0 20px;min-height:16px;"></div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="flex-between">
+      <h2>Cloud Sync (Firebase)</h2>
+      <span class="small" id="syncStatus">Not connected — data only lives in this browser.</span>
+    </div>
+    <div class="small" style="margin-bottom:10px;">Connect a Firebase project so this tracker's data stays up to date across every device/browser you open it in. <a href="#" id="showSyncSetupLink" style="color:var(--accent);">Setup instructions</a>.</div>
+    <div class="row" style="margin-bottom:0;">
+      <input type="text" id="syncConfigInput" placeholder="Paste your Firebase config (the whole {...} object) here" style="flex:1;min-width:280px;">
+      <input type="text" id="syncDocIdInput" placeholder="A long random ID you make up (acts as your access key)" style="flex:1;min-width:280px;">
+      <button class="secondary" id="saveSyncConfigBtn">Connect</button>
+      <button class="secondary" id="disconnectSyncBtn">Disconnect</button>
+    </div>
+    <div id="syncSetupInstructions" class="small" style="display:none;margin-top:12px;padding:12px;background:var(--panel2);border-radius:6px;line-height:1.6;">
+      1. Go to <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--accent);">console.firebase.google.com</a> and create a new project (free tier is enough).<br>
+      2. In the project, go to <b>Build &rarr; Firestore Database</b>, click Create database, and start it in <b>test mode</b>.<br>
+      3. Click the gear icon &rarr; <b>Project settings</b> &rarr; scroll to "Your apps" &rarr; click the <b>&lt;/&gt;</b> (web) icon &rarr; register an app (no hosting needed) &rarr; copy the <code>firebaseConfig</code> object shown.<br>
+      4. Paste that whole object into the first box above.<br>
+      5. Make up a long random string (e.g. mash your keyboard, 20+ characters) and paste it into the second box — this is the only thing standing between your data and anyone who has this file, so keep it private and don't reuse a real password.<br>
+      6. In Firestore, go to the <b>Rules</b> tab and replace the contents with the rule below (swap in your random ID), then click Publish:
+      <pre style="background:var(--panel);padding:10px;border-radius:6px;overflow-x:auto;font-size:11px;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /financeTracker/YOUR-RANDOM-ID-HERE {
+      allow read, write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}</pre>
+      7. Click "Connect" above. From then on, this device (and any other device you set up the same way with the same config + ID) will sync automatically.
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tabBtnMonthly">Monthly</button>
+    <button class="tab-btn" id="tabBtnPortfolio">Portfolio</button>
+    <button class="tab-btn" id="tabBtnYearly">Yearly Overview</button>
+  </div>
+
+  <div class="tab-panel active" id="tabMonthly">
+
+  <div class="row">
+    <label class="small">Month:</label>
+    <button class="secondary" id="prevMonthBtn" title="Previous month">&larr;</button>
+    <input type="month" id="monthPicker">
+    <button class="secondary" id="nextMonthBtn" title="Next month">&rarr;</button>
+    <button class="secondary" id="newMonthBtn">Add / Switch Month</button>
+    <span class="pill" id="monthPill"></span>
+  </div>
+
+  <div class="grid3">
+    <div class="stat"><div class="label">Total income this month</div><div class="value" id="totalIncome">$0.00</div></div>
+    <div class="stat"><div class="label">Total Expenses (variable + fixed)</div><div class="value" id="totalExpenses">$0.00</div></div>
+    <div class="stat"><div class="label">Saved this month</div><div class="value" id="savedValue">$0.00</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h2>Income Sources (this month)</h2>
+    <table>
+      <thead><tr><th>Source</th><th style="width:150px;">Category</th><th style="width:110px;">Amount</th><th style="width:40px;"></th></tr></thead>
+      <tbody id="incomeBody"></tbody>
+    </table>
+    <div class="empty" id="incomeEmpty">No income sources yet for this month.</div>
+    <button class="secondary" id="addIncomeBtn" style="margin-top:10px;">+ Add income source</button>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="flex-between">
+      <h2>Import Statement PDF</h2>
+      <span class="small">Parses text-based PDF statements (dates, descriptions, amounts)</span>
+    </div>
+    <div class="drop" id="dropZone">
+      Drag & drop a statement PDF here, or click to choose a file
+      <input type="file" id="fileInput" accept="application/pdf" style="display:none;">
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h2>Variable Expenses (from statement)</h2>
+    <div id="expenseGroups"></div>
+    <div class="empty" id="expenseEmpty">No expenses yet. Upload a statement or add a row manually.</div>
+    <button class="secondary" id="addRowBtn" style="margin-top:10px;">+ Add row</button>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h2>Fixed Expenses (this month)</h2>
+    <table>
+      <thead><tr><th>Category</th><th style="width:110px;">Amount</th><th style="width:40px;"></th></tr></thead>
+      <tbody id="fixedBody"></tbody>
+    </table>
+    <button class="secondary" id="addFixedBtn" style="margin-top:10px;">+ Add fixed expense</button>
+  </div>
+
+  <div class="row">
+    <button id="exportCsvBtn">Download month as CSV</button>
+    <button class="secondary" id="clearMonthBtn">Clear this month's variable expenses</button>
+  </div>
+
+  </div>
+
+  <div class="tab-panel" id="tabPortfolio">
+    <div class="row">
+      <label class="small">Snapshot for:</label>
+      <button class="secondary" id="portPrevMonthBtn" title="Previous month">&larr;</button>
+      <span class="pill" id="portMonthPill"></span>
+      <button class="secondary" id="portNextMonthBtn" title="Next month">&rarr;</button>
+      <span class="small">Balances carry forward automatically to new months — just update what's changed.</span>
+    </div>
+
+    <div class="grid4">
+      <div class="stat"><div class="label">Total Savings</div><div class="value" id="totalSavings">$0.00</div></div>
+      <div class="stat"><div class="label">Total Investments</div><div class="value" id="totalInvestments">$0.00</div></div>
+      <div class="stat"><div class="label">Net Worth (all accounts)</div><div class="value" id="totalNetWorth">$0.00</div></div>
+      <div class="stat"><div class="label">Total Gain/Loss</div><div class="value" id="totalGainLoss">$0.00</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="flex-between">
+        <h2>Live Stock Prices</h2>
+        <span class="small">Free API key from <a href="https://finnhub.io/register" target="_blank" style="color:var(--accent);">finnhub.io</a> (no credit card needed)</span>
+      </div>
+      <div class="row" style="margin-bottom:0;">
+        <input type="text" id="apiKeyInput" placeholder="Paste your Finnhub API key" style="flex:1;min-width:220px;">
+        <button class="secondary" id="saveApiKeyBtn">Save Key</button>
+        <button id="refreshPricesBtn">Refresh Prices</button>
+      </div>
+      <div id="priceStatus" class="small" style="margin-top:8px;min-height:16px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;max-width:420px;">
+      <h2>Savings</h2>
+      <table>
+        <thead><tr><th>Account Name</th><th style="width:120px;">Balance</th><th style="width:40px;"></th></tr></thead>
+        <tbody id="savingsBody"></tbody>
+      </table>
+      <div class="empty" id="savingsEmpty">No savings accounts yet.</div>
+      <button class="secondary" id="addSavingsBtn" style="margin-top:10px;">+ Add savings account</button>
+    </div>
+
+    <div class="card">
+      <h2>Stocks &amp; Investments</h2>
+      <table>
+        <thead><tr><th>Account Name</th><th style="width:120px;">Category</th><th style="width:80px;">Ticker</th><th style="width:80px;">Shares</th><th style="width:90px;">Price</th><th style="width:120px;">Balance</th><th style="width:110px;">Cost Basis</th><th style="width:130px;">Gain/Loss</th><th style="width:40px;"></th></tr></thead>
+        <tbody id="investmentsBody"></tbody>
+      </table>
+      <div class="empty" id="investmentsEmpty">No stock or investment accounts yet.</div>
+      <button class="secondary" id="addInvestmentBtn" style="margin-top:10px;">+ Add investment account</button>
+      <div class="small" style="margin-top:10px;">Fill in Ticker + Shares and hit "Refresh Prices" above to auto-calculate the balance. Cost Basis is the total amount you originally paid in — fill it in to see your gain or loss. Leave Ticker blank to enter the balance manually (e.g. a 401k your brokerage doesn't expose by ticker).</div>
+    </div>
+
+    <div class="card" style="margin-top:20px;margin-bottom:20px;">
+      <h2>Asset Allocation</h2>
+      <div class="donut-row">
+        <div style="position:relative;">
+          <div class="donut" id="allocationDonut"></div>
+          <div class="donut-center"><div class="amt" id="allocationCenterAmt">$0</div><div class="lbl">Net Worth</div></div>
+        </div>
+        <div class="legend" id="allocationLegend"></div>
+      </div>
+      <div class="empty" id="allocationEmpty" style="display:none;">Add an account balance to see your allocation.</div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="flex-between">
+        <h2>Portfolio Snapshots</h2>
+        <button id="takeSnapshotBtn">📸 Take Snapshot</button>
+      </div>
+      <div class="small" style="margin:6px 0 14px;">Click "Take Snapshot" any time (every few months, after a big deposit, etc.) to record your current net worth on a timeline — separate from the month-to-month view above.</div>
+      <div class="chart" id="snapshotChart"></div>
+      <div class="empty" id="snapshotEmpty">No snapshots yet. Take your first one above.</div>
+      <table id="snapshotTableWrap" style="margin-top:14px;">
+        <thead><tr><th>Date</th><th style="width:120px;">Net Worth</th><th style="width:40px;"></th></tr></thead>
+        <tbody id="snapshotBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Cash Flow</h2>
+      <div class="small" style="margin-bottom:14px;">Log where money moved — a bonus landing in Savings, a transfer from Savings into a stock buy, or money leaving Savings for a purchase (like new skis). This is a record only; it doesn't change any account balances for you.</div>
+      <div class="row" style="margin-bottom:14px;">
+        <input type="date" id="cfDate">
+        <select id="cfFrom"></select>
+        <span class="small">&rarr;</span>
+        <select id="cfTo"></select>
+        <input type="number" step="0.01" placeholder="Amount" id="cfAmount" style="width:110px;">
+        <input type="text" placeholder="Note (e.g. Bonus, Bought skis)" id="cfNote" style="flex:1;min-width:180px;">
+        <button id="addCashFlowBtn">+ Log Cash Flow</button>
+      </div>
+      <table>
+        <thead><tr><th style="width:100px;">Date</th><th>From</th><th style="width:20px;"></th><th>To</th><th style="width:110px;">Amount</th><th>Note</th><th style="width:40px;"></th></tr></thead>
+        <tbody id="cashFlowBody"></tbody>
+      </table>
+      <div class="empty" id="cashFlowEmpty">No cash flows logged yet.</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabYearly">
+    <div class="row">
+      <label class="small">Year:</label>
+      <select id="yearPicker"></select>
+    </div>
+
+    <div class="grid3">
+      <div class="stat"><div class="label">Total income (year)</div><div class="value" id="yearIncome">$0.00</div></div>
+      <div class="stat"><div class="label">Total expenses (year)</div><div class="value" id="yearExpenses">$0.00</div></div>
+      <div class="stat"><div class="label">Total saved (year)</div><div class="value" id="yearSaved">$0.00</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="flex-between">
+        <h2>Income vs. Expenses</h2>
+        <span class="small"><span style="color:var(--good);">&#9632;</span> Income &nbsp; <span style="color:var(--bad);">&#9632;</span> Expenses (overlay)</span>
+      </div>
+      <div class="chart" id="yearChart"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Month by month</h2>
+      <table>
+        <thead><tr><th>Month</th><th style="width:130px;">Income</th><th style="width:130px;">Expenses</th><th style="width:130px;">Saved</th><th>Relative</th></tr></thead>
+        <tbody id="yearBody"></tbody>
+      </table>
+      <div class="empty" id="yearEmpty" style="display:none;">No data yet for this year.</div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between">
+        <h2>Net Worth Trend</h2>
+        <span class="small" id="netWorthChangeLabel"></span>
+      </div>
+      <div class="chart" id="netWorthChart"></div>
+      <div class="empty" id="netWorthEmpty" style="display:none;">No account balances recorded for this year yet.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  months: {},        // { "2026-07": { income, expenses:[{date,title,amount}], fixed:[{title,amount}] } }
+  snapshots: [],      // [{date:'2026-07-20', netWorth, savings, investments, breakdown:{Savings:..,Investment:..,Retirement:..,Other:..}}]
+  cashFlows: [],       // [{date, from, to, amount, note}] — a record-only log of money moving between accounts / External
+  currentMonth: null
+};
+
+function load(){
+  try{
+    const raw = localStorage.getItem('financeTrackerData');
+    if(raw){
+      const parsed = JSON.parse(raw);
+      state.months = parsed.months || {};
+      state.snapshots = parsed.snapshots || [];
+      state.cashFlows = parsed.cashFlows || [];
+      state._legacyFixed = parsed.fixed || null; // old shared fixed list, used only for one-time migration
+    }
+  }catch(e){console.warn('load failed', e);}
+}
+function save(){
+  localStorage.setItem('financeTrackerData', JSON.stringify({months: state.months, snapshots: state.snapshots, cashFlows: state.cashFlows}));
+  scheduleCloudSave();
+}
+
+// --- Cloud Sync (Firebase Firestore) ---
+// Data still writes to localStorage on every save() above (instant, offline-safe).
+// If a Firebase project is connected, we additionally mirror the whole state to one
+// Firestore document, and on load we check Firestore for anything newer than what's
+// cached locally, so opening the app on a different device/browser picks up the latest.
+let cloudDb = null;
+let cloudDocRef = null;
+let cloudSaveTimer = null;
+let cloudConnected = false;
+
+function getSyncConfig(){
+  try{
+    const raw = localStorage.getItem('financeTrackerSyncConfig');
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+
+function setSyncStatus(msg){
+  const el = document.getElementById('syncStatus');
+  if(el) el.textContent = msg;
+}
+
+function initCloudSync(){
+  const cfg = getSyncConfig();
+  if(!cfg || !cfg.config || !cfg.docId){
+    setSyncStatus('Not connected — data only lives in this browser.');
+    return;
+  }
+  try{
+    const app = firebase.apps.length ? firebase.apps[0] : firebase.initializeApp(cfg.config);
+    cloudDb = firebase.firestore(app);
+    cloudDocRef = cloudDb.collection('financeTracker').doc(cfg.docId);
+    cloudConnected = true;
+    setSyncStatus('Connecting...');
+    document.getElementById('syncConfigInput').value = JSON.stringify(cfg.config, null, 2);
+    document.getElementById('syncDocIdInput').value = cfg.docId;
+    pullFromCloud(true);
+  }catch(err){
+    console.error('Firebase init failed', err);
+    setSyncStatus('Connection error — check your config and try again.');
+    cloudConnected = false;
+  }
+}
+
+async function pullFromCloud(applyIfNewer){
+  if(!cloudDocRef) return;
+  try{
+    const snap = await cloudDocRef.get();
+    if(snap.exists){
+      const cloudData = snap.data();
+      const cloudTime = cloudData.updatedAt || 0;
+      const localTime = Number(localStorage.getItem('financeTrackerLocalUpdatedAt')) || 0;
+      if(!applyIfNewer || cloudTime > localTime){
+        state.months = cloudData.months || {};
+        state.snapshots = cloudData.snapshots || [];
+        state.cashFlows = cloudData.cashFlows || [];
+        localStorage.setItem('financeTrackerData', JSON.stringify({months: state.months, snapshots: state.snapshots, cashFlows: state.cashFlows}));
+        localStorage.setItem('financeTrackerLocalUpdatedAt', String(cloudTime));
+        const key = currentMonthKey() || Object.keys(state.months)[0] || new Date().toISOString().slice(0,7);
+        switchToMonth(key);
+        populateYearPicker();
+        renderSnapshots();
+      }
+    }
+    setSyncStatus(`Connected — synced ${new Date().toLocaleTimeString()}`);
+  }catch(err){
+    console.error('Cloud pull failed', err);
+    setSyncStatus('Connected, but the last sync failed (offline? check Firestore rules).');
+  }
+}
+
+function scheduleCloudSave(){
+  if(!cloudConnected || !cloudDocRef) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(pushToCloud, 800); // debounce so rapid edits don't spam writes
+}
+
+async function pushToCloud(){
+  if(!cloudDocRef) return;
+  const now = Date.now();
+  try{
+    await cloudDocRef.set({
+      months: state.months,
+      snapshots: state.snapshots,
+      cashFlows: state.cashFlows,
+      updatedAt: now
+    });
+    localStorage.setItem('financeTrackerLocalUpdatedAt', String(now));
+    setSyncStatus(`Connected — synced ${new Date().toLocaleTimeString()}`);
+  }catch(err){
+    console.error('Cloud push failed', err);
+    setSyncStatus('Connected, but the last sync failed (offline? check Firestore rules).');
+  }
+}
+
+document.getElementById('showSyncSetupLink').addEventListener('click', e => {
+  e.preventDefault();
+  const el = document.getElementById('syncSetupInstructions');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('saveSyncConfigBtn').addEventListener('click', () => {
+  const raw = document.getElementById('syncConfigInput').value.trim();
+  const docId = document.getElementById('syncDocIdInput').value.trim();
+  if(!raw || !docId){
+    setSyncStatus('Paste your Firebase config and a random ID first.');
+    return;
+  }
+  let config;
+  try{
+    // Firebase console gives this as a JS object literal (unquoted keys), not strict JSON,
+    // so we evaluate it as an expression rather than JSON.parse.
+    config = new Function('return (' + raw + ')')();
+  }catch(err){
+    setSyncStatus('Could not read that config — paste the whole { apiKey: ..., ... } object from Firebase.');
+    return;
+  }
+  if(!config || !config.apiKey || !config.projectId){
+    setSyncStatus('That doesn\'t look like a valid Firebase config.');
+    return;
+  }
+  localStorage.setItem('financeTrackerSyncConfig', JSON.stringify({config, docId}));
+  initCloudSync();
+});
+
+document.getElementById('disconnectSyncBtn').addEventListener('click', () => {
+  localStorage.removeItem('financeTrackerSyncConfig');
+  cloudDb = null; cloudDocRef = null; cloudConnected = false;
+  document.getElementById('syncConfigInput').value = '';
+  document.getElementById('syncDocIdInput').value = '';
+  setSyncStatus('Not connected — data only lives in this browser.');
+});
+
+const INCOME_CATEGORIES = ['Paycheck','Bonus','Gift','Marketplace Sale','Other'];
+const ACCOUNT_CATEGORIES = ['Savings','Investment','Retirement','Other'];
+const DEFAULT_FIXED = () => ([
+  {title:'Car Payment', amount:414},
+  {title:'Rent', amount:1097},
+  {title:'Utilities', amount:0}
+]);
+const DEFAULT_ACCOUNTS = () => ([
+  {name:'Savings Account', category:'Savings', balance:0},
+  {name:'Brokerage / Stocks', category:'Investment', balance:0}
+]);
+
+function currentMonthKey(){
+  return state.currentMonth;
+}
+
+// find the closest earlier month (by calendar order) that already has account data,
+// so balances carry forward instead of resetting to zero every month
+function findPriorAccounts(key){
+  const keys = Object.keys(state.months)
+    .filter(k => k < key && Array.isArray(state.months[k].accounts) && state.months[k].accounts.length)
+    .sort();
+  if(!keys.length) return null;
+  return state.months[keys[keys.length-1]].accounts.map(a => ({...a}));
+}
+
+function ensureMonth(key){
+  if(!state.months[key]) state.months[key] = {
+    income:[
+      {title:'Paycheck 1', category:'Paycheck', amount:0},
+      {title:'Paycheck 2', category:'Paycheck', amount:0}
+    ],
+    expenses:[],
+    fixed: DEFAULT_FIXED(),
+    accounts: findPriorAccounts(key) || DEFAULT_ACCOUNTS()
+  };
+  if(!Array.isArray(state.months[key].income)){
+    // migrate old single-number income field
+    const old = Number(state.months[key].income)||0;
+    state.months[key].income = old ? [{title:'Income', category:'Other', amount: old}] : [];
+  }
+  // migrate income entries missing a category
+  state.months[key].income.forEach(inc => { if(!inc.category) inc.category = 'Other'; });
+  if(!state.months[key].expenses) state.months[key].expenses = [];
+  // migrate months created before fixed expenses were per-month
+  if(!Array.isArray(state.months[key].fixed)){
+    state.months[key].fixed = (state._legacyFixed && state._legacyFixed.length) ? state._legacyFixed.map(f => ({...f})) : DEFAULT_FIXED();
+  }
+  // migrate months created before portfolio tracking existed
+  if(!Array.isArray(state.months[key].accounts)){
+    state.months[key].accounts = findPriorAccounts(key) || DEFAULT_ACCOUNTS();
+  }
+  return state.months[key];
+}
+
+function fmt(n){
+  n = Number(n)||0;
+  return (n<0?'-':'') + '$' + Math.abs(n).toFixed(2);
+}
+
+function renderAll(){
+  const key = currentMonthKey();
+  document.getElementById('monthPill').textContent = key ? key : 'no month selected';
+  const m = key ? ensureMonth(key) : {income:[], expenses:[], fixed:[]};
+
+  // income table
+  const ibody = document.getElementById('incomeBody');
+  ibody.innerHTML = '';
+  document.getElementById('incomeEmpty').style.display = m.income.length ? 'none' : 'block';
+  m.income.forEach((inc, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escapeHtml(inc.title||'')}" data-i="${i}" data-f="title"></td>
+      <td><select data-i="${i}" data-f="category">
+        ${INCOME_CATEGORIES.map(c => `<option value="${c}" ${inc.category===c?'selected':''}>${c}</option>`).join('')}
+      </select></td>
+      <td><input type="number" step="0.01" value="${inc.amount}" data-i="${i}" data-f="amount"></td>
+      <td><button class="danger" data-deli="${i}">✕</button></td>
+    `;
+    ibody.appendChild(tr);
+  });
+  ibody.querySelectorAll('input, select').forEach(inp => {
+    const evt = inp.tagName === 'SELECT' ? 'change' : 'input';
+    inp.addEventListener(evt, e => {
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      m.income[i][f] = f === 'amount' ? parseFloat(e.target.value)||0 : e.target.value;
+      save(); renderTotals();
+    });
+  });
+  ibody.querySelectorAll('[data-deli]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      m.income.splice(+e.target.dataset.deli, 1);
+      save(); renderAll();
+    });
+  });
+
+  // expenses, grouped by import batch (manual rows have no importLabel)
+  renderExpenseGroups(m);
+
+  // fixed table (per-month; editing one month never affects another)
+  const fbody = document.getElementById('fixedBody');
+  fbody.innerHTML = '';
+  m.fixed.forEach((f, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escapeHtml(f.title||'')}" data-i="${i}" data-f="title"></td>
+      <td><input type="number" step="0.01" value="${f.amount}" data-i="${i}" data-f="amount"></td>
+      <td><button class="danger" data-delf="${i}">✕</button></td>
+    `;
+    fbody.appendChild(tr);
+  });
+  fbody.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      m.fixed[i][f] = f === 'amount' ? parseFloat(e.target.value)||0 : e.target.value;
+      save(); renderTotals();
+    });
+  });
+  fbody.querySelectorAll('[data-delf]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      m.fixed.splice(+e.target.dataset.delf, 1);
+      save(); renderAll();
+    });
+  });
+
+  renderTotals();
+  renderPortfolio();
+}
+
+// Cost Basis means different things depending on whether the account has shares:
+// - Ticker + Shares set → Cost Basis is treated as your average cost PER SHARE (like your
+//   brokerage shows), and total cost = costBasis × shares.
+// - No shares (manual balance account, e.g. a 401k) → Cost Basis is a total dollar amount.
+function accountTotalCostBasis(acc){
+  const raw = Number(acc.costBasis) || 0;
+  if(raw <= 0) return 0;
+  const hasShares = Number(acc.shares) > 0;
+  return hasShares ? raw * Number(acc.shares) : raw;
+}
+
+function gainLossHtmlFor(acc){
+  const totalCost = accountTotalCostBasis(acc);
+  if(totalCost <= 0) return '<span class="small">—</span>';
+  const balance = Number(acc.balance) || 0;
+  const gain = balance - totalCost;
+  const pct = (gain / totalCost) * 100;
+  const cls = gain >= 0 ? 'amt-pos' : 'amt-neg';
+  return `<span class="${cls}">${gain>=0?'+':''}${fmt(gain)} (${gain>=0?'+':''}${pct.toFixed(1)}%)</span>`;
+}
+
+// Recompute an account's Shares and Cost Basis (avg cost per share) from its transaction log.
+function recomputeFromTransactions(acc){
+  if(!Array.isArray(acc.transactions) || !acc.transactions.length) return;
+  const totalShares = acc.transactions.reduce((s,t)=>s+(Number(t.shares)||0),0);
+  const totalCost = acc.transactions.reduce((s,t)=>s+(Number(t.shares)||0)*(Number(t.price)||0),0);
+  acc.shares = totalShares;
+  acc.costBasis = totalShares > 0 ? totalCost / totalShares : 0;
+}
+
+function investmentRowHtml(acc, i){
+  const autoCalc = !!(acc.ticker && acc.ticker.trim());
+  const hasShares = Number(acc.shares) > 0;
+  const hasTx = Array.isArray(acc.transactions) && acc.transactions.length > 0;
+  const sharesField = hasTx
+    ? `<span class="small" title="Calculated from ${acc.transactions.length} transaction(s) below">${acc.shares}</span>`
+    : `<input type="number" step="0.0001" value="${acc.shares||''}" data-i="${i}" data-f="shares" placeholder="0">`;
+  const costBasisField = hasTx
+    ? `<span class="small" title="Weighted average cost per share from your transaction log">${fmt(acc.costBasis)}</span>`
+    : `<input type="number" step="0.01" value="${acc.costBasis||''}" data-i="${i}" data-f="costBasis" placeholder="0" title="${hasShares ? 'Average cost PER SHARE (like your brokerage shows)' : 'Total dollars invested'}">`;
+
+  const txCount = hasTx ? acc.transactions.length : 0;
+  const isOpen = !!txOpenState[i];
+
+  const txRows = (acc.transactions||[]).map((t, j) => `<tr>
+      <td><input type="text" value="${escapeHtml(t.date||'')}" data-acc="${i}" data-tx="${j}" data-tf="date" placeholder="YYYY-MM-DD"></td>
+      <td><input type="number" step="0.0001" value="${t.shares||''}" data-acc="${i}" data-tx="${j}" data-tf="shares" placeholder="0"></td>
+      <td><input type="number" step="0.01" value="${t.price||''}" data-acc="${i}" data-tx="${j}" data-tf="price" placeholder="0"></td>
+      <td class="small">${fmt((Number(t.shares)||0)*(Number(t.price)||0))}</td>
+      <td><button class="danger" data-deltx="${j}" data-delacc="${i}">✕</button></td>
+    </tr>`).join('');
+
+  return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <input type="text" value="${escapeHtml(acc.name||'')}" data-i="${i}" data-f="name" style="flex:1;">
+          <button class="tx-toggle-btn ${isOpen?'open':''}" data-txtoggle="${i}" title="Transactions">▸${txCount ? ` ${txCount}` : ''}</button>
+        </div>
+      </td>
+      <td><select data-i="${i}" data-f="category">
+        ${ACCOUNT_CATEGORIES.filter(c=>c!=='Savings').map(c => `<option value="${c}" ${acc.category===c?'selected':''}>${c}</option>`).join('')}
+      </select></td>
+      <td><input type="text" value="${escapeHtml(acc.ticker||'')}" data-i="${i}" data-f="ticker" placeholder="AAPL" style="text-transform:uppercase;"></td>
+      <td>${sharesField}</td>
+      <td class="small">${acc.price ? fmt(acc.price) : '—'}</td>
+      <td><input type="number" step="0.01" value="${acc.balance}" data-i="${i}" data-f="balance" ${autoCalc ? 'readonly title="Calculated from shares × live price. Click Refresh Prices to update."' : ''}></td>
+      <td>${costBasisField}</td>
+      <td>${gainLossHtmlFor(acc)}</td>
+      <td><button class="danger" data-dela="${i}">✕</button></td>
+    </tr>
+    <tr class="tx-row" data-tx-row="${i}" style="display:${isOpen ? 'table-row' : 'none'};">
+      <td colspan="9" style="border-bottom:1px solid var(--border);padding:0;">
+        <div class="tx-panel">
+          <table>
+            <thead><tr><th>Date</th><th style="width:90px;">Shares</th><th style="width:100px;">Price/share</th><th style="width:90px;">Total</th><th style="width:32px;"></th></tr></thead>
+            <tbody>${txRows}</tbody>
+          </table>
+          <button class="secondary" data-addtx="${i}">+ Add transaction</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+function savingsRowHtml(acc, i){
+  return `<tr>
+      <td><input type="text" value="${escapeHtml(acc.name||'')}" data-i="${i}" data-f="name"></td>
+      <td><input type="number" step="0.01" value="${acc.balance}" data-i="${i}" data-f="balance"></td>
+      <td><button class="danger" data-dela="${i}">✕</button></td>
+    </tr>`;
+}
+
+function renderPortfolio(){
+  const key = currentMonthKey();
+  document.getElementById('portMonthPill').textContent = key ? key : 'no month selected';
+  const m = key ? ensureMonth(key) : {accounts:[]};
+
+  const savingsIdx = [];
+  const investmentIdx = [];
+  m.accounts.forEach((acc, i) => {
+    if(acc.category === 'Savings') savingsIdx.push(i); else investmentIdx.push(i);
+  });
+
+  const sbody = document.getElementById('savingsBody');
+  document.getElementById('savingsEmpty').style.display = savingsIdx.length ? 'none' : 'block';
+  sbody.innerHTML = savingsIdx.map(i => savingsRowHtml(m.accounts[i], i)).join('');
+
+  const ibody = document.getElementById('investmentsBody');
+  document.getElementById('investmentsEmpty').style.display = investmentIdx.length ? 'none' : 'block';
+  ibody.innerHTML = investmentIdx.map(i => investmentRowHtml(m.accounts[i], i)).join('');
+
+  [sbody, ibody].forEach(container => {
+    container.querySelectorAll('input[data-f], select[data-f]').forEach(inp => {
+      const evt = inp.tagName === 'SELECT' ? 'change' : 'input';
+      inp.addEventListener(evt, e => {
+        const i = +e.target.dataset.i, f = e.target.dataset.f;
+        if(f === 'ticker'){
+          m.accounts[i][f] = e.target.value.toUpperCase();
+        } else if(f === 'balance' || f === 'shares' || f === 'costBasis'){
+          m.accounts[i][f] = parseFloat(e.target.value)||0;
+        } else {
+          m.accounts[i][f] = e.target.value;
+        }
+        save(); renderPortfolioTotals(m);
+        // update in-place (avoid a full re-render, which would steal focus mid-type)
+        const row = e.target.closest('tr');
+        if(f === 'category'){
+          save(); renderPortfolio(); return; // account moved between Savings/Investments tables
+        }
+        if(f === 'ticker'){
+          const balanceInput = row.querySelector('input[data-f="balance"]');
+          const autoCalc = !!e.target.value.trim();
+          balanceInput.readOnly = autoCalc;
+          balanceInput.title = autoCalc ? 'Calculated from shares × live price. Click Refresh Prices to update.' : '';
+        }
+        if(f === 'balance' || f === 'costBasis' || f === 'shares'){
+          const gainCell = row.children[7];
+          if(!gainCell) return;
+          gainCell.innerHTML = gainLossHtmlFor(m.accounts[i]);
+        }
+      });
+    });
+    container.querySelectorAll('[data-dela]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        m.accounts.splice(+e.target.dataset.dela, 1);
+        save(); renderPortfolio();
+      });
+    });
+
+    // --- transaction log wiring ---
+    // uses 'change' (fires on blur / Enter) rather than 'input', so a full re-render
+    // doesn't steal focus after every keystroke
+    container.querySelectorAll('input[data-tf]').forEach(inp => {
+      inp.addEventListener('change', e => {
+        const accIdx = +e.target.dataset.acc, txIdx = +e.target.dataset.tx, tf = e.target.dataset.tf;
+        const acc = m.accounts[accIdx];
+        acc.transactions[txIdx][tf] = (tf === 'date') ? e.target.value : (parseFloat(e.target.value)||0);
+        recomputeFromTransactions(acc);
+        txOpenState[accIdx] = true;
+        save();
+        renderPortfolio();
+      });
+    });
+    container.querySelectorAll('[data-addtx]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const accIdx = +e.target.dataset.addtx;
+        const acc = m.accounts[accIdx];
+        if(!Array.isArray(acc.transactions)) acc.transactions = [];
+        // first time logging a transaction: preserve whatever Shares/Cost Basis were already there
+        if(acc.transactions.length === 0 && (Number(acc.shares) > 0 || Number(acc.costBasis) > 0)){
+          acc.transactions.push({
+            date: new Date().toISOString().slice(0,10),
+            shares: Number(acc.shares) || 0,
+            price: Number(acc.costBasis) || 0
+          });
+        }
+        acc.transactions.push({date: new Date().toISOString().slice(0,10), shares: 0, price: 0});
+        recomputeFromTransactions(acc);
+        txOpenState[accIdx] = true;
+        save();
+        renderPortfolio();
+      });
+    });
+    container.querySelectorAll('[data-deltx]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const accIdx = +e.target.dataset.delacc, txIdx = +e.target.dataset.deltx;
+        const acc = m.accounts[accIdx];
+        acc.transactions.splice(txIdx, 1);
+        recomputeFromTransactions(acc);
+        if(acc.transactions.length === 0){ acc.shares = 0; acc.costBasis = 0; }
+        txOpenState[accIdx] = true;
+        save();
+        renderPortfolio();
+      });
+    });
+    container.querySelectorAll('[data-txtoggle]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const idx = e.target.dataset.txtoggle;
+        txOpenState[idx] = !txOpenState[idx];
+        const row = container.querySelector(`tr[data-tx-row="${idx}"]`);
+        if(row) row.style.display = txOpenState[idx] ? 'table-row' : 'none';
+        e.target.classList.toggle('open', !!txOpenState[idx]);
+      });
+    });
+  });
+
+  renderPortfolioTotals(m);
+  renderAssetAllocation(m);
+  renderSnapshots();
+  renderCashFlows(m);
+}
+
+const ALLOCATION_COLORS = {Savings:'#1e8e4f', Investment:'#57c785', Retirement:'#2f6f4e', Other:'#9fd8b8'};
+
+function renderAssetAllocation(m){
+  const totals = {};
+  m.accounts.forEach(a => {
+    const cat = a.category || 'Other';
+    totals[cat] = (totals[cat]||0) + (Number(a.balance)||0);
+  });
+  const entries = Object.entries(totals).filter(([,v]) => v > 0);
+  const grandTotal = entries.reduce((s,[,v])=>s+v,0);
+
+  document.getElementById('allocationEmpty').style.display = grandTotal > 0 ? 'none' : 'block';
+  document.getElementById('allocationCenterAmt').textContent = fmt(grandTotal);
+
+  const donut = document.getElementById('allocationDonut');
+  const legend = document.getElementById('allocationLegend');
+
+  if(grandTotal <= 0){
+    donut.style.background = 'var(--panel2)';
+    legend.innerHTML = '';
+    return;
+  }
+
+  let acc = 0;
+  const stops = entries.map(([cat, val]) => {
+    const pct = (val / grandTotal) * 100;
+    const start = acc;
+    acc += pct;
+    const color = ALLOCATION_COLORS[cat] || '#9fd8b8';
+    return `${color} ${start}% ${acc}%`;
+  });
+  donut.style.background = `conic-gradient(${stops.join(', ')})`;
+
+  legend.innerHTML = entries
+    .sort((a,b) => b[1]-a[1])
+    .map(([cat, val]) => {
+      const pct = (val / grandTotal) * 100;
+      const color = ALLOCATION_COLORS[cat] || '#9fd8b8';
+      return `<div class="legend-row">
+        <span class="legend-swatch" style="background:${color};"></span>
+        <span class="legend-name">${cat}</span>
+        <span>${fmt(val)}</span>
+        <span class="legend-pct">${pct.toFixed(1)}%</span>
+      </div>`;
+    }).join('');
+}
+
+// --- Portfolio snapshots (manual, date-stamped, independent of monthly view) ---
+document.getElementById('takeSnapshotBtn').addEventListener('click', () => {
+  const key = currentMonthKey();
+  if(!key) return;
+  const m = ensureMonth(key);
+  const totals = {};
+  m.accounts.forEach(a => {
+    const cat = a.category || 'Other';
+    totals[cat] = (totals[cat]||0) + (Number(a.balance)||0);
+  });
+  const netWorth = m.accounts.reduce((s,a)=>s+(Number(a.balance)||0),0);
+  const savings = totals['Savings'] || 0;
+  const investments = (totals['Investment']||0) + (totals['Retirement']||0);
+  state.snapshots.push({
+    date: new Date().toISOString().slice(0,10),
+    netWorth, savings, investments, breakdown: totals
+  });
+  state.snapshots.sort((a,b) => a.date.localeCompare(b.date));
+  save();
+  renderSnapshots();
+});
+
+function renderSnapshots(){
+  const list = state.snapshots;
+  document.getElementById('snapshotEmpty').style.display = list.length ? 'none' : 'block';
+  document.getElementById('snapshotTableWrap').style.display = list.length ? 'table' : 'none';
+
+  const chart = document.getElementById('snapshotChart');
+  const maxVal = Math.max(1, ...list.map(s => s.netWorth));
+  chart.innerHTML = list.map(s => {
+    const pct = Math.max(1, Math.round(s.netWorth / maxVal * 100));
+    const d = new Date(s.date + 'T00:00:00');
+    const label = d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+    return `<div class="chart-col">
+      <div class="chart-bar-wrap" style="height:${pct}%;" title="${s.date}: ${fmt(s.netWorth)}">
+        <div class="chart-bar-income" style="height:100%;"></div>
+      </div>
+      <div class="chart-label">${label}</div>
+      <div class="chart-amt">${fmt(s.netWorth)}</div>
+    </div>`;
+  }).join('');
+
+  const tbody = document.getElementById('snapshotBody');
+  tbody.innerHTML = list.slice().reverse().map((s, revIdx) => {
+    const i = list.length - 1 - revIdx;
+    const d = new Date(s.date + 'T00:00:00');
+    return `<tr>
+      <td>${d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'})}</td>
+      <td>${fmt(s.netWorth)}</td>
+      <td><button class="danger" data-delsnap="${i}">✕</button></td>
+    </tr>`;
+  }).join('');
+  tbody.querySelectorAll('[data-delsnap]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      state.snapshots.splice(+e.target.dataset.delsnap, 1);
+      save(); renderSnapshots();
+    });
+  });
+}
+
+// --- Cash Flow log (record-only; doesn't touch account balances) ---
+function cashFlowEndpointOptions(m){
+  const names = m.accounts.map(a => a.name).filter(Boolean);
+  return ['External', ...names];
+}
+
+function renderCashFlows(m){
+  const fromSel = document.getElementById('cfFrom');
+  const toSel = document.getElementById('cfTo');
+  const options = cashFlowEndpointOptions(m);
+  const prevFrom = fromSel.value, prevTo = toSel.value;
+  const optHtml = options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+  fromSel.innerHTML = optHtml;
+  toSel.innerHTML = optHtml;
+  if(options.includes(prevFrom)) fromSel.value = prevFrom;
+  if(options.includes(prevTo)) toSel.value = prevTo;
+  if(!document.getElementById('cfDate').value){
+    document.getElementById('cfDate').value = new Date().toISOString().slice(0,10);
+  }
+
+  const list = state.cashFlows;
+  document.getElementById('cashFlowEmpty').style.display = list.length ? 'none' : 'block';
+  const tbody = document.getElementById('cashFlowBody');
+  const sorted = list.map((cf,i) => ({cf,i})).sort((a,b) => b.cf.date.localeCompare(a.cf.date));
+  tbody.innerHTML = sorted.map(({cf,i}) => {
+    const d = new Date(cf.date + 'T00:00:00');
+    return `<tr>
+      <td class="small">${d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</td>
+      <td>${escapeHtml(cf.from)}</td>
+      <td class="small">&rarr;</td>
+      <td>${escapeHtml(cf.to)}</td>
+      <td>${fmt(cf.amount)}</td>
+      <td class="small">${escapeHtml(cf.note||'')}</td>
+      <td><button class="danger" data-delcf="${i}">✕</button></td>
+    </tr>`;
+  }).join('');
+  tbody.querySelectorAll('[data-delcf]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      state.cashFlows.splice(+e.target.dataset.delcf, 1);
+      save(); renderCashFlows(m);
+    });
+  });
+}
+
+document.getElementById('addCashFlowBtn').addEventListener('click', () => {
+  const date = document.getElementById('cfDate').value || new Date().toISOString().slice(0,10);
+  const from = document.getElementById('cfFrom').value;
+  const to = document.getElementById('cfTo').value;
+  const amount = parseFloat(document.getElementById('cfAmount').value) || 0;
+  const note = document.getElementById('cfNote').value.trim();
+  if(amount <= 0){
+    alert('Enter an amount greater than 0.');
+    return;
+  }
+  if(from === to){
+    alert('"From" and "To" should be different.');
+    return;
+  }
+  state.cashFlows.push({date, from, to, amount, note});
+  save();
+  document.getElementById('cfAmount').value = '';
+  document.getElementById('cfNote').value = '';
+  const key = currentMonthKey();
+  renderCashFlows(key ? ensureMonth(key) : {accounts:[]});
+});
+
+function renderPortfolioTotals(m){
+  const savings = m.accounts.filter(a=>a.category==='Savings').reduce((s,a)=>s+(Number(a.balance)||0),0);
+  const investments = m.accounts.filter(a=>a.category==='Investment'||a.category==='Retirement').reduce((s,a)=>s+(Number(a.balance)||0),0);
+  const netWorth = m.accounts.reduce((s,a)=>s+(Number(a.balance)||0),0);
+  const accountsWithBasis = m.accounts.filter(a => accountTotalCostBasis(a) > 0);
+  const totalCostBasis = accountsWithBasis.reduce((s,a)=>s+accountTotalCostBasis(a),0);
+  const totalCurrentValue = accountsWithBasis.reduce((s,a)=>s+(Number(a.balance)||0),0);
+  const totalGainLoss = totalCurrentValue - totalCostBasis;
+  document.getElementById('totalSavings').textContent = fmt(savings);
+  document.getElementById('totalInvestments').textContent = fmt(investments);
+  document.getElementById('totalNetWorth').textContent = fmt(netWorth);
+  const gainLossEl = document.getElementById('totalGainLoss');
+  if(accountsWithBasis.length){
+    const pct = totalCostBasis > 0 ? (totalGainLoss / totalCostBasis) * 100 : 0;
+    gainLossEl.textContent = `${totalGainLoss>=0?'+':''}${fmt(totalGainLoss)} (${totalGainLoss>=0?'+':''}${pct.toFixed(1)}%)`;
+    gainLossEl.className = 'value ' + (totalGainLoss >= 0 ? 'amt-pos' : 'amt-neg');
+  } else {
+    gainLossEl.textContent = '—';
+    gainLossEl.className = 'value';
+  }
+}
+
+function expenseRowHtml(exp, i){
+  return `<tr>
+      <td><input type="text" value="${escapeHtml(exp.date||'')}" data-i="${i}" data-f="date"></td>
+      <td><input type="text" value="${escapeHtml(exp.title||'')}" data-i="${i}" data-f="title"></td>
+      <td><input type="number" step="0.01" value="${exp.amount}" data-i="${i}" data-f="amount"></td>
+      <td><button class="danger" data-del="${i}">✕</button></td>
+    </tr>`;
+}
+
+function wireExpenseRows(container, m){
+  container.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      m.expenses[i][f] = f === 'amount' ? parseFloat(e.target.value)||0 : e.target.value;
+      save(); renderTotals();
+    });
+  });
+  container.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      m.expenses.splice(+e.target.dataset.del, 1);
+      save(); renderAll();
+    });
+  });
+}
+
+function renderExpenseGroups(m){
+  const wrap = document.getElementById('expenseGroups');
+  document.getElementById('expenseEmpty').style.display = m.expenses.length ? 'none' : 'block';
+
+  // group indices by importLabel; undefined/empty label = manual entries
+  const groups = new Map(); // label -> [index,...]
+  const manualIdx = [];
+  m.expenses.forEach((exp, i) => {
+    if(exp.importLabel){
+      if(!groups.has(exp.importLabel)) groups.set(exp.importLabel, []);
+      groups.get(exp.importLabel).push(i);
+    } else {
+      manualIdx.push(i);
+    }
+  });
+
+  const headerRow = `<thead><tr><th style="width:110px;">Date</th><th>Title / Description</th><th style="width:110px;">Amount</th><th style="width:40px;"></th></tr></thead>`;
+  let html = '';
+
+  groups.forEach((idxs, label) => {
+    const total = idxs.reduce((s,i)=>s+(Number(m.expenses[i].amount)||0),0);
+    html += `<details class="import-group" open data-label="${escapeHtml(label)}">
+      <summary><span>${escapeHtml(label)}</span><span class="meta">${idxs.length} item${idxs.length===1?'':'s'} &middot; ${fmt(total)}</span></summary>
+      <table>${headerRow}<tbody>${idxs.map(i => expenseRowHtml(m.expenses[i], i)).join('')}</tbody></table>
+    </details>`;
+  });
+
+  if(manualIdx.length){
+    html += `<div class="manual-rows"><table>${headerRow}<tbody>${manualIdx.map(i => expenseRowHtml(m.expenses[i], i)).join('')}</tbody></table></div>`;
+  }
+
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('details').forEach(d => {
+    // preserve open/closed state set by user across re-renders within this session
+    if(d.dataset.label in openGroupState){
+      d.open = openGroupState[d.dataset.label];
+    }
+    d.addEventListener('toggle', () => { openGroupState[d.dataset.label] = d.open; });
+  });
+  wireExpenseRows(wrap, m);
+}
+const openGroupState = {};
+const txOpenState = {}; // tracks which accounts' "Transactions" details panels are expanded, keyed by account index
+
+function renderTotals(){
+  const key = currentMonthKey();
+  const m = key ? ensureMonth(key) : {income:[], expenses:[], fixed:[]};
+  const incomeTotal = m.income.reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const varTotal = m.expenses.reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const fixedTotal = (m.fixed||[]).reduce((s,f)=>s+(Number(f.amount)||0),0);
+  const total = varTotal + fixedTotal;
+  const saved = incomeTotal - total;
+  document.getElementById('totalIncome').textContent = fmt(incomeTotal);
+  document.getElementById('totalExpenses').textContent = fmt(total);
+  const savedEl = document.getElementById('savedValue');
+  savedEl.textContent = fmt(saved);
+  savedEl.className = 'value ' + (saved >= 0 ? 'amt-pos' : 'amt-neg');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// month picker
+document.getElementById('newMonthBtn').addEventListener('click', () => {
+  const val = document.getElementById('monthPicker').value; // "2026-07"
+  if(!val){ setStatus('Pick a month first.'); return; }
+  switchToMonth(val);
+});
+
+document.getElementById('addIncomeBtn').addEventListener('click', () => {
+  if(!currentMonthKey()){ setStatus('Select a month first.'); return; }
+  ensureMonth(currentMonthKey()).income.push({title:'New income source', category:'Other', amount:0});
+  save(); renderAll();
+});
+
+document.getElementById('addRowBtn').addEventListener('click', () => {
+  if(!currentMonthKey()){ setStatus('Select a month first.'); return; }
+  ensureMonth(currentMonthKey()).expenses.push({date:'', title:'New expense', amount:0});
+  save(); renderAll();
+});
+
+document.getElementById('addFixedBtn').addEventListener('click', () => {
+  if(!currentMonthKey()){ setStatus('Select a month first.'); return; }
+  ensureMonth(currentMonthKey()).fixed.push({title:'New fixed expense', amount:0});
+  save(); renderAll();
+});
+
+// --- Live stock prices (Finnhub) ---
+function setPriceStatus(msg){
+  document.getElementById('priceStatus').textContent = msg;
+}
+
+function getApiKey(){
+  return localStorage.getItem('finnhubApiKey') || '';
+}
+
+document.getElementById('apiKeyInput').value = getApiKey();
+
+document.getElementById('saveApiKeyBtn').addEventListener('click', () => {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('finnhubApiKey', key);
+  setPriceStatus(key ? 'API key saved in this browser.' : 'API key cleared.');
+});
+
+document.getElementById('refreshPricesBtn').addEventListener('click', async () => {
+  const apiKey = getApiKey();
+  if(!apiKey){
+    setPriceStatus('Paste and save a Finnhub API key first (free at finnhub.io/register).');
+    return;
+  }
+  const key = currentMonthKey();
+  if(!key) return;
+  const m = ensureMonth(key);
+  const targets = m.accounts
+    .map((acc, i) => ({acc, i}))
+    .filter(({acc}) => acc.ticker && acc.ticker.trim() && Number(acc.shares) > 0);
+
+  if(!targets.length){
+    setPriceStatus('No accounts have both a Ticker and Shares set yet.');
+    return;
+  }
+
+  setPriceStatus(`Fetching prices for ${targets.length} ticker(s)...`);
+  let successCount = 0, failCount = 0;
+
+  for(const {acc, i} of targets){
+    try{
+      const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(acc.ticker.trim())}&token=${encodeURIComponent(apiKey)}`);
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      // Finnhub returns { c: currentPrice, ... }; a symbol with no data comes back as all zeros
+      if(typeof data.c === 'number' && data.c > 0){
+        m.accounts[i].price = data.c;
+        m.accounts[i].balance = Math.round(data.c * Number(acc.shares) * 100) / 100;
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }catch(err){
+      console.error('Price fetch failed for', acc.ticker, err);
+      failCount++;
+    }
+  }
+
+  save();
+  renderPortfolio();
+  setPriceStatus(`Updated ${successCount} account(s).${failCount ? ` Could not find prices for ${failCount} ticker(s) — double-check the symbol.` : ''}`);
+});
+
+document.getElementById('addSavingsBtn').addEventListener('click', () => {
+  if(!currentMonthKey()){ return; }
+  ensureMonth(currentMonthKey()).accounts.push({name:'New savings account', category:'Savings', balance:0});
+  save(); renderPortfolio();
+});
+
+document.getElementById('addInvestmentBtn').addEventListener('click', () => {
+  if(!currentMonthKey()){ return; }
+  ensureMonth(currentMonthKey()).accounts.push({name:'New investment', category:'Investment', balance:0});
+  save(); renderPortfolio();
+});
+
+document.getElementById('portPrevMonthBtn').addEventListener('click', () => {
+  const base = currentMonthKey() || document.getElementById('monthPicker').value;
+  switchToMonth(shiftMonth(base, -1));
+});
+document.getElementById('portNextMonthBtn').addEventListener('click', () => {
+  const base = currentMonthKey() || document.getElementById('monthPicker').value;
+  switchToMonth(shiftMonth(base, 1));
+});
+
+document.getElementById('clearMonthBtn').addEventListener('click', () => {
+  if(!currentMonthKey()) return;
+  if(confirm('Clear all variable expenses for this month?')){
+    ensureMonth(currentMonthKey()).expenses = [];
+    save(); renderAll();
+  }
+});
+
+// CSV export
+document.getElementById('exportCsvBtn').addEventListener('click', () => {
+  const key = currentMonthKey();
+  if(!key){ setStatus('Select a month first.'); return; }
+  const m = ensureMonth(key);
+  let rows = [['Type','Date','Title','Category','Amount']];
+  m.income.forEach(i => rows.push(['Income', '', i.title||'', i.category||'', (Number(i.amount)||0).toFixed(2)]));
+  m.expenses.forEach(e => rows.push(['Variable', e.date||'', e.title||'', '', (Number(e.amount)||0).toFixed(2)]));
+  m.fixed.forEach(f => rows.push(['Fixed', '', f.title||'', '', (Number(f.amount)||0).toFixed(2)]));
+  (m.accounts||[]).forEach(a => {
+    rows.push(['Account Balance', '', a.name||'', a.category||'', (Number(a.balance)||0).toFixed(2)]);
+    const totalCost = accountTotalCostBasis(a);
+    if(totalCost > 0){
+      rows.push(['Account Gain/Loss', '', a.name||'', a.category||'', ((Number(a.balance)||0) - totalCost).toFixed(2)]);
+    }
+  });
+  const incomeTotal = m.income.reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const varTotal = m.expenses.reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const fixedTotal = m.fixed.reduce((s,f)=>s+(Number(f.amount)||0),0);
+  rows.push(['','','Total Income', '', incomeTotal.toFixed(2)]);
+  rows.push(['','','Total Expenses', '', (varTotal+fixedTotal).toFixed(2)]);
+  rows.push(['','','Saved', '', (incomeTotal-(varTotal+fixedTotal)).toFixed(2)]);
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `finance-tracker-${key}.csv`;
+  a.click();
+});
+
+function setStatus(msg){
+  document.getElementById('status').textContent = msg;
+}
+
+// --- Backup / Restore (survives browser cache/site-data clears) ---
+function setBackupStatus(msg){
+  document.getElementById('backupStatus').textContent = msg;
+}
+
+document.getElementById('backupBtn').addEventListener('click', () => {
+  const payload = {months: state.months, snapshots: state.snapshots, cashFlows: state.cashFlows, exportedAt: new Date().toISOString(), version: 1};
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = URL.createObjectURL(blob);
+  a.download = `finance-tracker-backup-${stamp}.json`;
+  a.click();
+  setBackupStatus(`Backup saved. Keep this file somewhere safe (cloud drive, external folder) — it's the only copy outside this browser.`);
+});
+
+document.getElementById('restoreBtn').addEventListener('click', () => {
+  document.getElementById('restoreFileInput').click();
+});
+
+document.getElementById('restoreFileInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if(!parsed.months || typeof parsed.months !== 'object'){
+      setBackupStatus('That file doesn\'t look like a valid backup.');
+      return;
+    }
+    if(!confirm('This will replace all current data in the tracker with the contents of this backup. Continue?')){
+      return;
+    }
+    state.months = parsed.months;
+    state.snapshots = parsed.snapshots || [];
+    state.cashFlows = parsed.cashFlows || [];
+    state._legacyFixed = null;
+    save();
+    const key = currentMonthKey() || Object.keys(state.months)[0] || new Date().toISOString().slice(0,7);
+    switchToMonth(key);
+    populateYearPicker();
+    renderSnapshots();
+    setBackupStatus('Backup restored successfully.');
+  }catch(err){
+    console.error(err);
+    setBackupStatus('Could not read that file. Make sure it\'s a JSON backup exported from this tracker.');
+  }
+  e.target.value = '';
+});
+
+// --- PDF parsing ---
+if(window['pdfjsLib']){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if(e.target.files.length) handleFile(e.target.files[0]);
+});
+
+async function handleFile(file){
+  if(!currentMonthKey()){
+    setStatus('Select a month above before importing a statement.');
+    return;
+  }
+  setStatus('Reading PDF...');
+  try{
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    let fullText = '';
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      // group items by approximate line (y position) to preserve row structure
+      const lineMap = {};
+      content.items.forEach(item => {
+        const y = Math.round(item.transform[5]);
+        if(!lineMap[y]) lineMap[y] = [];
+        lineMap[y].push(item.str);
+      });
+      const ys = Object.keys(lineMap).map(Number).sort((a,b)=>b-a);
+      ys.forEach(y => { fullText += lineMap[y].join(' ') + '\n'; });
+    }
+    const parsed = parseStatementText(fullText);
+    if(parsed.length === 0){
+      setStatus('Could not confidently detect expense rows. You can add rows manually below.');
+      return;
+    }
+    const m = ensureMonth(currentMonthKey());
+    const existingImportNums = m.expenses
+      .map(e => (e.importLabel||'').match(/^Import (\d+)$/))
+      .filter(Boolean)
+      .map(mm => Number(mm[1]));
+    const nextNum = existingImportNums.length ? Math.max(...existingImportNums)+1 : 1;
+    const importLabel = `Import ${nextNum}`;
+    parsed.forEach(p => p.importLabel = importLabel);
+    m.expenses.push(...parsed);
+    save(); renderAll();
+    setStatus(`Imported ${parsed.length} line item(s) into "${importLabel}". Review, edit titles, and delete anything that shouldn't count.`);
+  }catch(err){
+    console.error(err);
+    setStatus('Could not parse this PDF (it may be a scanned image rather than text). Add expenses manually below.');
+  }
+}
+
+// Heuristic line parser for bank/credit-card statements.
+// Looks for lines containing a date (MM/DD or MM/DD/YY[YY]) and a trailing dollar amount.
+function parseStatementText(text){
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const dateRe = /(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/;
+  const amtRe = /(-?\$?\(?-?\d{1,3}(?:,\d{3})*\.\d{2}\)?)\s*$/;
+  const results = [];
+  for(const line of lines){
+    const dateMatch = line.match(dateRe);
+    const amtMatch = line.match(amtRe);
+    if(dateMatch && amtMatch){
+      let amountStr = amtMatch[1].replace(/[\$,]/g,'');
+      let negative = false;
+      if(amountStr.startsWith('(') && amountStr.endsWith(')')){
+        negative = true;
+        amountStr = amountStr.slice(1,-1);
+      }
+      let amount = parseFloat(amountStr);
+      if(isNaN(amount)) continue;
+      if(negative) amount = -amount;
+      // title = everything between date and amount
+      let title = line
+        .replace(dateMatch[0], '')
+        .replace(amtMatch[0], '')
+        .trim()
+        .replace(/\s{2,}/g,' ');
+      if(!title) title = '(unlabeled)';
+      // skip obvious header/footer/balance lines
+      if(/total|balance|statement|page \d+|summary/i.test(title) && title.length < 40) continue;
+      results.push({date: dateMatch[0], title, amount: Math.abs(amount)});
+    }
+  }
+  return results;
+}
+
+// month picker: switching the picker itself activates that month (no extra click needed)
+document.getElementById('monthPicker').addEventListener('change', e => {
+  const val = e.target.value;
+  if(!val) return;
+  switchToMonth(val);
+});
+
+function switchToMonth(key){
+  state.currentMonth = key;
+  ensureMonth(key);
+  document.getElementById('monthPicker').value = key;
+  save();
+  renderAll();
+}
+
+function shiftMonth(key, delta){
+  const [y,mo] = key.split('-').map(Number);
+  const d = new Date(y, mo-1+delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+document.getElementById('prevMonthBtn').addEventListener('click', () => {
+  const base = currentMonthKey() || document.getElementById('monthPicker').value;
+  switchToMonth(shiftMonth(base, -1));
+});
+document.getElementById('nextMonthBtn').addEventListener('click', () => {
+  const base = currentMonthKey() || document.getElementById('monthPicker').value;
+  switchToMonth(shiftMonth(base, 1));
+});
+
+// --- Tabs ---
+const tabBtnMonthly = document.getElementById('tabBtnMonthly');
+const tabBtnPortfolio = document.getElementById('tabBtnPortfolio');
+const tabBtnYearly = document.getElementById('tabBtnYearly');
+const tabMonthly = document.getElementById('tabMonthly');
+const tabPortfolio = document.getElementById('tabPortfolio');
+const tabYearly = document.getElementById('tabYearly');
+
+tabBtnMonthly.addEventListener('click', () => switchTab('monthly'));
+tabBtnPortfolio.addEventListener('click', () => switchTab('portfolio'));
+tabBtnYearly.addEventListener('click', () => switchTab('yearly'));
+
+function switchTab(which){
+  tabBtnMonthly.classList.toggle('active', which === 'monthly');
+  tabBtnPortfolio.classList.toggle('active', which === 'portfolio');
+  tabBtnYearly.classList.toggle('active', which === 'yearly');
+  tabMonthly.classList.toggle('active', which === 'monthly');
+  tabPortfolio.classList.toggle('active', which === 'portfolio');
+  tabYearly.classList.toggle('active', which === 'yearly');
+  if(which === 'portfolio') renderPortfolio();
+  if(which === 'yearly') renderYearly();
+}
+
+// --- Yearly overview ---
+const yearPicker = document.getElementById('yearPicker');
+yearPicker.addEventListener('change', renderYearly);
+
+function monthLabel(key){
+  const [y,mo] = key.split('-');
+  const d = new Date(Number(y), Number(mo)-1, 1);
+  return d.toLocaleString(undefined, {month:'long'});
+}
+
+function populateYearPicker(){
+  const years = new Set();
+  Object.keys(state.months).forEach(k => years.add(k.split('-')[0]));
+  years.add(String(new Date().getFullYear()));
+  const sorted = Array.from(years).sort((a,b)=>b-a);
+  const prev = yearPicker.value;
+  yearPicker.innerHTML = sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+  yearPicker.value = sorted.includes(prev) ? prev : sorted[0];
+}
+
+function renderYearly(){
+  populateYearPicker();
+  const year = yearPicker.value;
+
+  const rows = [];
+  for(let mo=1; mo<=12; mo++){
+    const key = `${year}-${String(mo).padStart(2,'0')}`;
+    const m = state.months[key];
+    if(!m){
+      rows.push({key, hasData:false});
+      continue;
+    }
+    const income = Array.isArray(m.income) ? m.income.reduce((s,i)=>s+(Number(i.amount)||0),0) : (Number(m.income)||0);
+    const varTotal = (m.expenses||[]).reduce((s,e)=>s+(Number(e.amount)||0),0);
+    const fixedTotal = (m.fixed||[]).reduce((s,f)=>s+(Number(f.amount)||0),0);
+    const expenses = varTotal + fixedTotal;
+    const netWorth = (m.accounts||[]).reduce((s,a)=>s+(Number(a.balance)||0),0);
+    const hasAccounts = Array.isArray(m.accounts) && m.accounts.length > 0;
+    rows.push({key, hasData:true, income, expenses, saved: income - expenses, netWorth, hasAccounts});
+  }
+
+  const activeRows = rows.filter(r => r.hasData);
+  const yearIncome = activeRows.reduce((s,r)=>s+r.income,0);
+  const yearExpenses = activeRows.reduce((s,r)=>s+r.expenses,0);
+  const yearSaved = yearIncome - yearExpenses;
+  document.getElementById('yearIncome').textContent = fmt(yearIncome);
+  document.getElementById('yearExpenses').textContent = fmt(yearExpenses);
+  const yearSavedEl = document.getElementById('yearSaved');
+  yearSavedEl.textContent = fmt(yearSaved);
+  yearSavedEl.className = 'value ' + (yearSaved >= 0 ? 'amt-pos' : 'amt-neg');
+
+  renderYearChart(rows);
+  renderNetWorthChart(rows);
+
+  const maxAbsSaved = Math.max(1, ...activeRows.map(r => Math.abs(r.saved)));
+  const tbody = document.getElementById('yearBody');
+  document.getElementById('yearEmpty').style.display = activeRows.length ? 'none' : 'block';
+  tbody.innerHTML = rows.map(r => {
+    if(!r.hasData){
+      return `<tr><td>${monthLabel(r.key)}</td><td colspan="4" class="small">No data</td></tr>`;
+    }
+    const pct = Math.min(100, Math.round(Math.abs(r.saved) / maxAbsSaved * 100));
+    const barClass = r.saved >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td>${monthLabel(r.key)}</td>
+      <td>${fmt(r.income)}</td>
+      <td>${fmt(r.expenses)}</td>
+      <td class="${r.saved >= 0 ? 'amt-pos' : 'amt-neg'}">${fmt(r.saved)}</td>
+      <td><div class="bar-track"><div class="bar-fill ${barClass}" style="width:${pct}%"></div></div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderYearChart(rows){
+  const el = document.getElementById('yearChart');
+  const maxVal = Math.max(1, ...rows.map(r => r.hasData ? Math.max(r.income, r.expenses) : 0));
+  el.innerHTML = rows.map(r => {
+    const shortLabel = monthLabel(r.key).slice(0,3);
+    if(!r.hasData){
+      return `<div class="chart-col">
+        <div class="chart-bar-wrap"></div>
+        <div class="chart-label">${shortLabel}</div>
+      </div>`;
+    }
+    const incomePct = Math.max(1, Math.round(r.income / maxVal * 100));
+    const expensePct = Math.min(100, Math.round(r.expenses / maxVal * 100));
+    return `<div class="chart-col">
+      <div class="chart-bar-wrap" style="height:${incomePct}%;" title="Income: ${fmt(r.income)} / Expenses: ${fmt(r.expenses)}">
+        <div class="chart-bar-income" style="height:100%;">
+          <div class="chart-bar-expense" style="height:${Math.round(expensePct/incomePct*100)}%;"></div>
+        </div>
+      </div>
+      <div class="chart-label">${shortLabel}</div>
+      <div class="chart-amt">${fmt(r.saved)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderNetWorthChart(rows){
+  const el = document.getElementById('netWorthChart');
+  const label = document.getElementById('netWorthChangeLabel');
+  const withAccounts = rows.filter(r => r.hasData && r.hasAccounts);
+  document.getElementById('netWorthEmpty').style.display = withAccounts.length ? 'none' : 'block';
+
+  if(withAccounts.length){
+    const first = withAccounts[0].netWorth;
+    const last = withAccounts[withAccounts.length-1].netWorth;
+    const change = last - first;
+    label.textContent = `${change >= 0 ? '+' : ''}${fmt(change)} across ${monthLabel(withAccounts[0].key)}–${monthLabel(withAccounts[withAccounts.length-1].key)}`;
+    label.className = 'small ' + (change >= 0 ? 'amt-pos' : 'amt-neg');
+  } else {
+    label.textContent = '';
+  }
+
+  const maxVal = Math.max(1, ...rows.map(r => r.hasData ? r.netWorth : 0));
+  el.innerHTML = rows.map(r => {
+    const shortLabel = monthLabel(r.key).slice(0,3);
+    if(!r.hasData || !r.hasAccounts){
+      return `<div class="chart-col">
+        <div class="chart-bar-wrap"></div>
+        <div class="chart-label">${shortLabel}</div>
+      </div>`;
+    }
+    const pct = Math.max(1, Math.round(r.netWorth / maxVal * 100));
+    return `<div class="chart-col">
+      <div class="chart-bar-wrap" style="height:${pct}%;" title="Net worth: ${fmt(r.netWorth)}">
+        <div class="chart-bar-income" style="height:100%;"></div>
+      </div>
+      <div class="chart-label">${shortLabel}</div>
+      <div class="chart-amt">${fmt(r.netWorth)}</div>
+    </div>`;
+  }).join('');
+}
+
+// init
+load();
+const now = new Date();
+const defaultMonth = now.toISOString().slice(0,7);
+document.getElementById('monthPicker').value = defaultMonth;
+state.currentMonth = defaultMonth;
+ensureMonth(defaultMonth);
+save();
+renderAll();
+populateYearPicker();
+initCloudSync();
+
+// Auto-select existing text in any text/number field when it gains focus,
+// so clicking or tabbing in lets you just type over the old value.
+document.addEventListener('focusin', e => {
+  const el = e.target;
+  if(el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')){
+    el.select();
+  }
+});
+</script>
+</body>
+</html>
